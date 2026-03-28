@@ -131,6 +131,12 @@
             box-shadow: 0 14px 30px rgba(37, 99, 235, 0.22);
         }
 
+        .gradient-btn:disabled,
+        .btn:disabled {
+            opacity: 0.72;
+            cursor: not-allowed;
+        }
+
         .gradient-btn.primary { background: var(--gradient-primary); }
         .gradient-btn.success { background: var(--gradient-success); }
         .gradient-btn.warning { background: var(--gradient-warning); }
@@ -589,6 +595,30 @@
             alert(message);
         }
 
+        function resolveActionButton(event) {
+            return event?.currentTarget || event?.target?.closest('button') || null;
+        }
+
+        function setButtonLoading(button, isLoading, loadingText = 'Processing...') {
+            if (!button) return;
+            if (!button.dataset.originalHtml) {
+                button.dataset.originalHtml = button.innerHTML;
+            }
+            button.disabled = isLoading;
+            button.innerHTML = isLoading
+                ? `<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>${loadingText}`
+                : button.dataset.originalHtml;
+        }
+
+        async function withButtonLoading(button, loadingText, action) {
+            setButtonLoading(button, true, loadingText);
+            try {
+                return await action();
+            } finally {
+                setButtonLoading(button, false);
+            }
+        }
+
         function openImageZoom(url, event) {
             if (event) event.stopPropagation();
             document.getElementById('zoomedImage').src = url;
@@ -780,64 +810,92 @@
             `).join('');
         }
 
-        async function handleAction(url, successMessage, body = null) {
-            const response = await fetch(url, {
-                method: 'PUT',
-                headers: getAuthHeaders(body ? {'Content-Type': 'application/json'} : {}),
-                body: body ? JSON.stringify(body) : null,
+        async function handleAction(url, successMessage, body = null, button = null, loadingText = 'Processing...') {
+            return withButtonLoading(button, loadingText, async () => {
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(body ? {'Content-Type': 'application/json'} : {}),
+                    body: body ? JSON.stringify(body) : null,
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    showToast(data.message || 'Action failed.');
+                    return;
+                }
+                showToast(successMessage || data.message);
+                await loadNotifications();
+                if (typeof window.afterTransferAction === 'function') {
+                    await window.afterTransferAction();
+                }
             });
-            const data = await response.json();
-            if (!response.ok) {
-                showToast(data.message || 'Action failed.');
-                return;
-            }
-            showToast(successMessage || data.message);
-            await loadNotifications();
-            if (typeof window.afterTransferAction === 'function') {
-                await window.afterTransferAction();
-            }
         }
 
-        async function handleFormAction(url, successMessage, formData) {
-            const response = await fetch(url, {
-                method: 'PUT',
-                headers: getAuthHeaders(),
-                body: formData,
+        async function handleFormAction(url, successMessage, formData, button = null, loadingText = 'Submitting...') {
+            return withButtonLoading(button, loadingText, async () => {
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: formData,
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    showToast(data.message || 'Action failed.');
+                    return false;
+                }
+                showToast(successMessage || data.message);
+                await loadNotifications();
+                if (typeof window.afterTransferAction === 'function') {
+                    await window.afterTransferAction();
+                }
+                return true;
             });
-            const data = await response.json();
-            if (!response.ok) {
-                showToast(data.message || 'Action failed.');
-                return false;
-            }
-            showToast(successMessage || data.message);
-            await loadNotifications();
-            if (typeof window.afterTransferAction === 'function') {
-                await window.afterTransferAction();
-            }
-            return true;
         }
 
         function approveTransfer(id, event) {
             if (event) event.stopPropagation();
             const adminComment = prompt('Optional admin comment for approval:') || '';
-            handleAction(`/api/transfers/approve/${id}/`, 'Transfer approved.', { admin_comment: adminComment });
+            handleAction(
+                `/api/transfers/approve/${id}/`,
+                'Transfer approved.',
+                { admin_comment: adminComment },
+                resolveActionButton(event),
+                'Approving...'
+            );
         }
 
         function rejectTransfer(id, event) {
             if (event) event.stopPropagation();
             const reason = prompt('Reason for rejection:');
             if (reason === null) return;
-            handleAction(`/api/transfers/reject/${id}/`, 'Transfer rejected.', { rejection_reason: reason });
+            handleAction(
+                `/api/transfers/reject/${id}/`,
+                'Transfer rejected.',
+                { rejection_reason: reason },
+                resolveActionButton(event),
+                'Rejecting...'
+            );
         }
 
         function cancelTransfer(id, event) {
             if (event) event.stopPropagation();
-            handleAction(`/api/transfers/cancel/${id}/`, 'Pending request removed.', {});
+            handleAction(
+                `/api/transfers/cancel/${id}/`,
+                'Pending request removed.',
+                {},
+                resolveActionButton(event),
+                'Removing...'
+            );
         }
 
         function confirmItem(id, event) {
             if (event) event.stopPropagation();
-            handleAction(`/api/transfers/confirm/${id}/`, 'Item receipt confirmed.');
+            handleAction(
+                `/api/transfers/confirm/${id}/`,
+                'Item receipt confirmed.',
+                null,
+                resolveActionButton(event),
+                'Confirming...'
+            );
         }
 
         function requestReturn(id, event) {
@@ -853,15 +911,22 @@
             if (event) event.stopPropagation();
             const returnCondition = prompt('Confirm return condition: GOOD / DAMAGED / INCOMPLETE', 'GOOD') || 'GOOD';
             const adminComment = prompt('Optional admin return note:') || '';
-            handleAction(`/api/transfers/approve-return/${id}/`, 'Return confirmed by admin.', {
-                return_condition: returnCondition.toUpperCase(),
-                return_note: adminComment,
-                admin_comment: adminComment,
-            });
+            handleAction(
+                `/api/transfers/approve-return/${id}/`,
+                'Return confirmed by admin.',
+                {
+                    return_condition: returnCondition.toUpperCase(),
+                    return_note: adminComment,
+                    admin_comment: adminComment,
+                },
+                resolveActionButton(event),
+                'Confirming...'
+            );
         }
 
         document.getElementById('returnRequestForm').addEventListener('submit', async (event) => {
             event.preventDefault();
+            const submitButton = event.submitter || event.target.querySelector('button[type="submit"]');
             const transferId = document.getElementById('returnTransferId').value;
             const formData = new FormData();
             formData.append('return_condition', document.getElementById('returnCondition').value);
@@ -876,6 +941,8 @@
                 `/api/transfers/return/${transferId}/`,
                 'Return request sent for admin confirmation.',
                 formData,
+                submitButton,
+                'Submitting...'
             );
             if (wasSuccessful) {
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('returnRequestModal')).hide();

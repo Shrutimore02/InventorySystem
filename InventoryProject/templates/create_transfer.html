@@ -77,7 +77,7 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Mobile</label>
-                        <input id="mobile" class="form-control search-input" readonly>
+                        <input id="mobile" class="form-control search-input" placeholder="Enter receiver mobile number">
                     </div>
                 </div>
 
@@ -255,43 +255,46 @@
 
     form.onsubmit = async (event) => {
         event.preventDefault();
+        const submitButton = event.submitter || form.querySelector('button[type="submit"]');
 
-        const fd = new FormData();
-        fd.append('item_id', item_list.value);
-        fd.append('item_name', item_name.value);
-        fd.append('category', category.value);
-        fd.append('total_quantity', total_quantity.value);
-        fd.append('serial_number', serial.value);
-        fd.append('description', desc.value);
-        fd.append('from_office', from.value);
-        fd.append('from_floor', from_floor.value);
-        fd.append('to_office', to.value);
-        fd.append('to_floor', to_floor.value);
-        fd.append('receiver_id', window.selectedReceiverId);
-        fd.append('receiver_name', receiver_search.value);
-        fd.append('receiver_phone', mobile.value);
-        fd.append('probable_days', days.value);
-        fd.append('expected_date', expected.value);
+        await withButtonLoading(submitButton, 'Submitting...', async () => {
+            const fd = new FormData();
+            fd.append('item_id', item_list.value);
+            fd.append('item_name', item_name.value);
+            fd.append('category', category.value);
+            fd.append('total_quantity', total_quantity.value);
+            fd.append('serial_number', serial.value);
+            fd.append('description', desc.value);
+            fd.append('from_office', from.value);
+            fd.append('from_floor', from_floor.value);
+            fd.append('to_office', to.value);
+            fd.append('to_floor', to_floor.value);
+            fd.append('receiver_id', window.selectedReceiverId);
+            fd.append('receiver_name', receiver_search.value);
+            fd.append('receiver_phone', mobile.value);
+            fd.append('probable_days', days.value);
+            fd.append('expected_date', expected.value);
 
-        for (const file of images.files) {
-            fd.append('images', file);
-        }
+            for (const file of images.files) {
+                fd.append('images', file);
+            }
 
-        const response = await fetch('/api/transfers/create/', {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCSRF() },
-            body: fd,
+            const response = await fetch('/api/transfers/create/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCSRF() },
+                body: fd,
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                showToast(data.message || 'Transfer submission failed.');
+                return;
+            }
+
+            showToast(data.message);
+            await loadNotifications();
+            window.location = '/';
         });
-
-        const data = await response.json();
-        if (!response.ok) {
-            showToast(data.message || 'Transfer submission failed.');
-            return;
-        }
-
-        showToast(data.message);
-        await loadNotifications();
-        window.location = '/';
     };
 
     document.addEventListener('DOMContentLoaded', async () => {

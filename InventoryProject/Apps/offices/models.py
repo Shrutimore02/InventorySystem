@@ -3,7 +3,7 @@ from django.db import models
 
 DEFAULT_FLOORS_BY_OFFICE = {
     'nasan': ['1st Floor', '2nd Floor', '3rd Floor', '4th Floor', '5th Floor'],
-    'aasan': ['10th Floor', '11th Floor'],
+    'asaan': ['10th Floor', '11th Floor'],
     'katraj': [],
 }
 
