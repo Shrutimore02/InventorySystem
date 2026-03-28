@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <div class="small text-uppercase text-secondary mb-2">Employee Workspace</div>
+        <h2 class="mb-1">Dashboard</h2>
+        <p class="text-muted mb-0">Track your assigned items, pending approvals, current stock visibility, and office activity from one place.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="/api/transfers/export/" class="gradient-btn dark text-decoration-none">Export CSV</a>
+        <a href="/create/" class="gradient-btn primary text-decoration-none">Create Transfer</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-8">
+        <div class="card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                <div>
+                    <div class="small text-uppercase text-secondary mb-2">Workflow</div>
+                    <h5 class="mb-1">Request -> Approval -> Receive -> Return -> Confirm</h5>
+                    <div class="text-muted small">Each row shows only the next action that matters for the current status.</div>
+                </div>
+                <div class="chip-row">
+                    <button class="filter-chip active" data-status="" onclick="applyStatusFilter('')">All</button>
+                    <button class="filter-chip" data-status="AWAITING_APPROVAL" onclick="applyStatusFilter('AWAITING_APPROVAL')">Pending</button>
+                    <button class="filter-chip" data-status="APPROVED" onclick="applyStatusFilter('APPROVED')">Approved</button>
+                    <button class="filter-chip" data-status="RECEIVED" onclick="applyStatusFilter('RECEIVED')">Received</button>
+                    <button class="filter-chip" data-status="RETURN_REQUESTED" onclick="applyStatusFilter('RETURN_REQUESTED')">Return Requested</button>
+                    <button class="filter-chip" data-status="RETURNED" onclick="applyStatusFilter('RETURNED')">Returned</button>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <input id="searchInput" class="form-control search-input" placeholder="Search by item, code, serial, sender, receiver">
+                </div>
+                <div class="col-md-3">
+                    <select id="officeFilter" class="form-select filter-select">
+                        <option value="">All offices</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button id="overdueFilterBtn" class="filter-chip w-100 h-100">Only Overdue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="metric-grid-card h-100">
+            <div class="small text-uppercase text-secondary mb-3">Status Guide</div>
+            <div class="metric-grid">
+                <div class="metric-item"><div class="fw-semibold">Pending Approval</div><div class="small text-muted">Waiting for admin</div></div>
+                <div class="metric-item"><div class="fw-semibold">Approved</div><div class="small text-muted">Ready to receive</div></div>
+                <div class="metric-item"><div class="fw-semibold">Received</div><div class="small text-muted">Currently assigned</div></div>
+                <div class="metric-item"><div class="fw-semibold">Return Requested</div><div class="small text-muted">Admin must verify</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card p-4 mb-4" id="receiverConfirmPanel" style="display:none;">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+            <div class="small text-uppercase text-secondary">Receiver Action Required</div>
+            <h5 class="mb-0">Items Waiting For Your Confirmation</h5>
+        </div>
+    </div>
+    <div id="receiverConfirmList" class="row g-3"></div>
+</div>
+
+<div class="card p-4 mb-4" id="receiverReturnPanel" style="display:none;">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+            <div class="small text-uppercase text-secondary">Return Action</div>
+            <h5 class="mb-0">Items You Can Return Now</h5>
+        </div>
+    </div>
+    <div id="receiverReturnList" class="row g-3"></div>
+</div>
+
+<div class="row g-3 mb-4" id="summaryCards"></div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-4">
+        <div class="card p-4 h-100">
+            <div class="small text-uppercase text-secondary mb-2">Stock Overview</div>
+            <div id="stockSummary" class="metric-grid"></div>
+        </div>
+    </div>
+    <div class="col-xl-8">
+        <div class="card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                    <div class="small text-uppercase text-secondary">Office Activity</div>
+                    <h5 class="mb-0">Office Summary</h5>
+                </div>
+            </div>
+            <div class="row g-3" id="officeSummary"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card table-card">
+    <div class="table-responsive p-3">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Item</th>
+                    <th>Offices</th>
+                    <th>Receiver</th>
+                    <th>Status</th>
+                    <th>Stock</th>
+                    <th>Expected Return</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="transferTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let dashboardTransfers = [];
+    let currentStatusFilter = '';
+    let overdueOnly = false;
+
+    function openDashboardTransfer(id) {
+        const transfer = dashboardTransfers.find(item => String(item.id) === String(id));
+        if (transfer) {
+            openTransferDetails(transfer);
+        }
+    }
+
+    function statusBadge(status, isOverdue) {
+        return getStatusMeta(status, isOverdue).tone;
+    }
+
+    function buildActionButton(transfer) {
+        if (['RETURNED', 'CANCELLED', 'REJECTED'].includes(transfer.status)) {
+            return '<span class="text-success small fw-semibold">Closed</span>';
+        }
+        return buildTransferActionButton(transfer, 'table');
+    }
+
+    function renderSummaryCards(summary) {
+        const statusCounts = summary.status_counts || {};
+        const cards = [
+            { label: 'Pending', value: statusCounts.AWAITING_APPROVAL || 0 },
+            { label: 'Approved', value: statusCounts.APPROVED || 0 },
+            { label: 'In Use', value: statusCounts.RECEIVED || 0 },
+            { label: 'Overdue', value: summary.overdue_count || 0 },
+        ];
+        document.getElementById('summaryCards').innerHTML = cards.map(card => `
+            <div class="col-6 col-xl-3">
+                <div class="card stat-card">
+                    <div class="small text-uppercase text-secondary mb-2">${card.label}</div>
+                    <h2 class="mb-0">${card.value}</h2>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderStockSummary(summary) {
+        const stock = summary.stock_summary || {};
+        const items = [
+            ['Total Items', stock.total_items || 0],
+            ['Available', stock.available_items || 0],
+            ['Assigned', stock.assigned_items || 0],
+            ['Awaiting Approval', stock.approval_items || 0],
+            ['Return Pending', stock.return_pending_items || 0],
+        ];
+        document.getElementById('stockSummary').innerHTML = items.map(item => `
+            <div class="metric-item">
+                <div class="small text-secondary">${item[0]}</div>
+                <div class="fw-semibold fs-5">${item[1]}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderOfficeSummary(summary) {
+        const offices = summary.office_summary || [];
+        const officeFilter = document.getElementById('officeFilter');
+        officeFilter.innerHTML = '<option value="">All offices</option>' + offices.map(office => `
+            <option value="${office.id}">${office.name}</option>
+        `).join('');
+
+        document.getElementById('officeSummary').innerHTML = offices.length ? offices.map(office => `
+            <div class="col-md-6 col-xxl-4">
+                <div class="metric-item h-100">
+                    <div class="fw-semibold">${escapeHtml(office.name)}</div>
+                    <div class="small text-muted mb-2">${escapeHtml(office.location)}</div>
+                    <div class="small">Outgoing: <strong>${office.outgoing_transfers}</strong></div>
+                    <div class="small">Incoming: <strong>${office.incoming_transfers}</strong></div>
+                </div>
+            </div>
+        `).join('') : '<div class="empty-state">No office summary yet.</div>';
+    }
+
+    function renderTransfers(data) {
+        const body = document.getElementById('transferTable');
+        if (!data.length) {
+            body.innerHTML = '<tr><td colspan="7" class="empty-state">No transfers match the current filters.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = data.map(transfer => `
+            <tr class="clickable-row" onclick="openDashboardTransfer(${transfer.id})">
+                <td>
+                    <div class="fw-semibold">${escapeHtml(transfer.item_name)}</div>
+                    <div class="small text-muted">${escapeHtml(transfer.item_code || '-')} • ${escapeHtml(transfer.serial_number || 'No serial')}</div>
+                </td>
+                <td>
+                    <div>${escapeHtml(transfer.from_location_label || transfer.from_office_name)}</div>
+                    <div class="small text-muted">to ${escapeHtml(transfer.to_location_label || transfer.to_office_name)}</div>
+                </td>
+                <td>
+                    <div>${escapeHtml(transfer.receiver_name)}</div>
+                    <div class="small text-muted">
+                        ${transfer.received_date
+                            ? `Confirmed on ${formatDateTime(transfer.received_date)}`
+                            : transfer.status === 'APPROVED' && String(window.inventoryState.activeEmployee.id) === String(transfer.receiver)
+                                ? 'Waiting for your confirmation'
+                                : transfer.status === 'APPROVED'
+                                    ? 'Receiver confirmation pending'
+                                    : 'No confirmation yet'}
+                    </div>
+                </td>
+                <td>
+                    <span class="badge bg-${statusBadge(transfer.status, transfer.is_overdue)}">${escapeHtml(getStatusMeta(transfer.status, transfer.is_overdue).label)}</span>
+                    <div class="small text-muted mt-1">
+                        ${transfer.status === 'RECEIVED' && String(window.inventoryState.activeEmployee.id) === String(transfer.receiver)
+                            ? `Ready to return anytime before or after ${formatDateOnly(transfer.expected_date)}`
+                            : escapeHtml(transfer.status_description || '')}
+                    </div>
+                </td>
+                <td>${transfer.item_available_quantity || 0} / ${transfer.item_total_quantity || 0}</td>
+                <td>${formatDateOnly(transfer.expected_date)}</td>
+                <td onclick="event.stopPropagation()">${buildActionButton(transfer)}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderReceiverConfirmPanel(data) {
+        const confirmItems = data.filter(transfer =>
+            transfer.status === 'APPROVED' &&
+            String(window.inventoryState.activeEmployee.id) === String(transfer.receiver)
+        );
+        const panel = document.getElementById('receiverConfirmPanel');
+        const list = document.getElementById('receiverConfirmList');
+
+        if (!confirmItems.length) {
+            panel.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+
+        panel.style.display = 'block';
+        list.innerHTML = confirmItems.map(transfer => `
+            <div class="col-lg-6">
+                <div class="metric-item h-100">
+                    <div class="fw-semibold">${escapeHtml(transfer.item_name)}</div>
+                    <div class="small text-muted mb-2">${escapeHtml(transfer.item_code || '-')} • ${escapeHtml(transfer.from_location_label || transfer.from_office_name)} to ${escapeHtml(transfer.to_location_label || transfer.to_office_name)}</div>
+                    <div class="small text-muted mb-3">Approved by ${escapeHtml(transfer.approved_by_name || 'admin')}. Confirm when the item has reached your place.</div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="gradient-btn success btn btn-sm" onclick="confirmItem(${transfer.id}, event)">Confirm Received</button>
+                        <button class="gradient-btn dark btn btn-sm" onclick="openDashboardTransfer(${transfer.id})">View Details</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderReceiverReturnPanel(data) {
+        const returnItems = data.filter(transfer =>
+            transfer.status === 'RECEIVED' &&
+            String(window.inventoryState.activeEmployee.id) === String(transfer.receiver)
+        );
+        const panel = document.getElementById('receiverReturnPanel');
+        const list = document.getElementById('receiverReturnList');
+
+        if (!returnItems.length) {
+            panel.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+
+        panel.style.display = 'block';
+        list.innerHTML = returnItems.map(transfer => `
+            <div class="col-lg-6">
+                <div class="metric-item h-100">
+                    <div class="fw-semibold">${escapeHtml(transfer.item_name)}</div>
+                    <div class="small text-muted mb-2">${escapeHtml(transfer.item_code || '-')} • received on ${formatDateTime(transfer.received_date)}</div>
+                    <div class="small text-muted mb-3">You can return this item anytime, including before the expected return date of ${formatDateOnly(transfer.expected_date)}.</div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="gradient-btn primary btn btn-sm" onclick="requestReturn(${transfer.id}, event)">Return Item</button>
+                        <button class="gradient-btn dark btn btn-sm" onclick="openDashboardTransfer(${transfer.id})">View Details</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function loadSummary() {
+        const response = await fetch('/api/transfers/summary/');
+        const data = await response.json();
+        renderSummaryCards(data);
+        renderStockSummary(data);
+        renderOfficeSummary(data);
+    }
+
+    async function loadTransfers() {
+        const params = new URLSearchParams();
+        if (currentStatusFilter) params.set('status', currentStatusFilter);
+        if (document.getElementById('officeFilter').value) params.set('office', document.getElementById('officeFilter').value);
+        if (document.getElementById('searchInput').value.trim()) params.set('search', document.getElementById('searchInput').value.trim());
+        if (overdueOnly) params.set('overdue', '1');
+
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`/api/transfers/list/${query}`);
+        const data = await response.json();
+        dashboardTransfers = data;
+        renderReceiverConfirmPanel(data);
+        renderReceiverReturnPanel(data);
+        renderTransfers(data);
+    }
+
+    function applyStatusFilter(status) {
+        currentStatusFilter = status;
+        document.querySelectorAll('.filter-chip[data-status]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.status === status);
+        });
+        loadTransfers();
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadSummary();
+        await loadTransfers();
+
+        document.getElementById('searchInput').addEventListener('input', loadTransfers);
+        document.getElementById('officeFilter').addEventListener('change', loadTransfers);
+        document.getElementById('overdueFilterBtn').addEventListener('click', function () {
+            overdueOnly = !overdueOnly;
+            this.classList.toggle('active', overdueOnly);
+            loadTransfers();
+        });
+    });
+
+    window.afterTransferAction = async () => {
+        await loadSummary();
+        await loadTransfers();
+    };
+</script>
+
+{% endblock %}

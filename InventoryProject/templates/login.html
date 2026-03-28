@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login | Inventory Tracking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background:
+                radial-gradient(circle at top, rgba(37, 99, 235, 0.2), transparent 35%),
+                radial-gradient(circle at bottom right, rgba(124, 58, 237, 0.2), transparent 30%),
+                linear-gradient(135deg, #eff6ff, #f8fafc);
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+        .auth-card {
+            width: min(460px, 92vw);
+            border: 0;
+            border-radius: 28px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+            background: rgba(255, 255, 255, 0.86);
+            backdrop-filter: blur(10px);
+        }
+
+        .gradient-btn {
+            border: 0;
+            color: #fff;
+            border-radius: 999px;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            box-shadow: 0 16px 32px rgba(37, 99, 235, 0.24);
+        }
+
+        .gradient-btn:disabled,
+        .btn:disabled {
+            opacity: 0.72;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 575px) {
+            body {
+                display: block;
+                padding: 12px;
+                min-height: 100dvh;
+            }
+
+            .auth-card {
+                width: 100%;
+                min-height: calc(100dvh - 24px);
+                margin: 0;
+                border-radius: 22px;
+            }
+
+            .auth-card h2 {
+                font-size: 1.75rem;
+            }
+
+            .form-control,
+            .gradient-btn,
+            #adminLoginBtn {
+                min-height: 48px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card auth-card p-4">
+        <div class="mb-4">
+            <div class="small text-uppercase text-primary fw-semibold mb-2">Inventory Tracking System</div>
+            <h2 class="mb-1" id="loginTitle">Login</h2>
+            <p class="text-muted mb-0" id="loginSubtitle">Sign in to access transfers, approvals, notifications, and item history.</p>
+        </div>
+
+        <form id="loginForm">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label" id="usernameLabel">Username</label>
+                <input id="username" class="form-control" placeholder="Enter username" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" id="passwordLabel">Password</label>
+                <input id="password" type="password" class="form-control" placeholder="Enter password" required>
+            </div>
+            <div class="form-check mb-3">
+                <input id="toggleLoginPassword" class="form-check-input" type="checkbox">
+                <label class="form-check-label small text-muted" for="toggleLoginPassword">Show password</label>
+            </div>
+            <button id="loginBtn" class="gradient-btn w-100" type="submit">Login</button>
+        </form>
+
+        <button id="adminLoginBtn" type="button" class="btn btn-outline-dark w-100 mt-3 rounded-pill py-2">
+            Admin Login
+        </button>
+
+        <div class="text-center mt-3 small">
+            New employee? <a href="/register/">Register here</a>
+        </div>
+    </div>
+
+    <script>
+        function getCSRF() {
+            return document.querySelector('[name=csrfmiddlewaretoken]').value;
+        }
+
+        const loginBtn = document.getElementById('loginBtn');
+        const adminLoginBtn = document.getElementById('adminLoginBtn');
+        const loginTitle = document.getElementById('loginTitle');
+        const loginSubtitle = document.getElementById('loginSubtitle');
+        const usernameLabel = document.getElementById('usernameLabel');
+        const passwordLabel = document.getElementById('passwordLabel');
+        const toggleLoginPassword = document.getElementById('toggleLoginPassword');
+        const adminMode = new URLSearchParams(window.location.search).get('mode') === 'admin';
+        const defaultLoginBtnText = loginBtn.innerHTML;
+
+        function setLoadingState(isLoading) {
+            loginBtn.disabled = isLoading;
+            adminLoginBtn.disabled = isLoading;
+            loginBtn.innerHTML = isLoading
+                ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Signing in...'
+                : defaultLoginBtnText;
+        }
+
+        function applyLoginMode() {
+            if (!adminMode) {
+                return;
+            }
+            loginTitle.textContent = 'Admin Login';
+            loginSubtitle.textContent = 'Enter admin username and admin password to access the admin panel.';
+            usernameLabel.textContent = 'Admin Username';
+            passwordLabel.textContent = 'Admin Password';
+            username.placeholder = 'Enter admin username';
+            password.placeholder = 'Enter admin password';
+            adminLoginBtn.textContent = 'Admin Login Selected';
+        }
+
+        applyLoginMode();
+
+        toggleLoginPassword.onchange = () => {
+            password.type = toggleLoginPassword.checked ? 'text' : 'password';
+        };
+
+        loginForm.onsubmit = async (event) => {
+            event.preventDefault();
+            setLoadingState(true);
+
+            const response = await loginRequest({
+                username: username.value,
+                password: password.value,
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                setLoadingState(false);
+                alert(data.message || 'Login failed.');
+                return;
+            }
+            window.location = data.redirect_url || '/';
+        };
+
+        async function loginRequest(payload) {
+            return fetch('/api/employees/login/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRF(),
+                },
+                body: JSON.stringify(payload),
+            });
+        }
+
+        adminLoginBtn.onclick = () => {
+            window.location = '/login/?mode=admin';
+        };
+    </script>
+</body>
+</html>

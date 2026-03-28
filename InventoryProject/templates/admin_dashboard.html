@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <div class="small text-uppercase text-secondary mb-2">Admin Workspace</div>
+        <h2 class="mb-1">Admin Panel</h2>
+        <p class="text-muted mb-0">Review approvals, rejections, return confirmations, stock pressure, and overdue items across all offices.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="/api/transfers/export/" class="gradient-btn dark text-decoration-none">Export CSV</a>
+        <a href="/" class="gradient-btn primary text-decoration-none">Open Employee Dashboard</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-8">
+        <div class="card p-4 h-100">
+            <div class="small text-uppercase text-secondary mb-2">Admin Queue Filters</div>
+            <div class="chip-row mb-3">
+                <button class="filter-chip active" data-admin-status="" onclick="applyAdminStatusFilter('')">All</button>
+                <button class="filter-chip" data-admin-status="AWAITING_APPROVAL" onclick="applyAdminStatusFilter('AWAITING_APPROVAL')">Needs Approval</button>
+                <button class="filter-chip" data-admin-status="RETURN_REQUESTED" onclick="applyAdminStatusFilter('RETURN_REQUESTED')">Return Checks</button>
+                <button class="filter-chip" data-admin-status="REJECTED" onclick="applyAdminStatusFilter('REJECTED')">Rejected</button>
+                <button class="filter-chip" data-admin-status="RETURNED" onclick="applyAdminStatusFilter('RETURNED')">Returned</button>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <input id="adminSearchInput" class="form-control search-input" placeholder="Search by item, code, serial, sender, receiver">
+                </div>
+                <div class="col-md-3">
+                    <select id="adminOfficeFilter" class="form-select filter-select">
+                        <option value="">All offices</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button id="adminOverdueBtn" class="filter-chip w-100 h-100">Only Overdue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="metric-grid-card h-100">
+            <div class="small text-uppercase text-secondary mb-3">Admin Actions</div>
+            <div class="metric-grid">
+                <div class="metric-item"><div class="fw-semibold">Approve</div><div class="small text-muted">Allow transfer</div></div>
+                <div class="metric-item"><div class="fw-semibold">Reject</div><div class="small text-muted">Stop request</div></div>
+                <div class="metric-item"><div class="fw-semibold">Confirm Return</div><div class="small text-muted">Close workflow</div></div>
+                <div class="metric-item"><div class="fw-semibold">Review Audit</div><div class="small text-muted">See full timeline</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4" id="adminSummaryCards"></div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-5">
+        <div class="card p-4 h-100">
+            <div class="small text-uppercase text-secondary mb-2">Inventory Pressure</div>
+            <div id="adminStockSummary" class="metric-grid"></div>
+        </div>
+    </div>
+    <div class="col-xl-7">
+        <div class="card p-4 h-100">
+            <div class="small text-uppercase text-secondary mb-2">Office Overview</div>
+            <div class="row g-3" id="adminOfficeSummary"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card table-card">
+    <div class="table-responsive p-3">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Item</th>
+                    <th>Sender</th>
+                    <th>Receiver</th>
+                    <th>Status</th>
+                    <th>Admin Name</th>
+                    <th>Expected</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="adminTransferTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let adminTransfers = [];
+    let adminStatusFilter = '';
+    let adminOverdueOnly = false;
+
+    function openAdminTransfer(id) {
+        const transfer = adminTransfers.find(item => String(item.id) === String(id));
+        if (transfer) openTransferDetails(transfer);
+    }
+
+    function renderAdminSummary(summary) {
+        const statusCounts = summary.status_counts || {};
+        const cards = [
+            ['Needs Approval', statusCounts.AWAITING_APPROVAL || 0],
+            ['Return Checks', statusCounts.RETURN_REQUESTED || 0],
+            ['Overdue', summary.overdue_count || 0],
+            ['Rejected', statusCounts.REJECTED || 0],
+        ];
+        document.getElementById('adminSummaryCards').innerHTML = cards.map(card => `
+            <div class="col-6 col-xl-3">
+                <div class="card stat-card">
+                    <div class="small text-uppercase text-secondary mb-2">${card[0]}</div>
+                    <h2 class="mb-0">${card[1]}</h2>
+                </div>
+            </div>
+        `).join('');
+
+        const stock = summary.stock_summary || {};
+        document.getElementById('adminStockSummary').innerHTML = [
+            ['Total Items', stock.total_items || 0],
+            ['Available', stock.available_items || 0],
+            ['Assigned', stock.assigned_items || 0],
+            ['Awaiting Approval', stock.approval_items || 0],
+            ['Return Pending', stock.return_pending_items || 0],
+        ].map(item => `
+            <div class="metric-item">
+                <div class="small text-secondary">${item[0]}</div>
+                <div class="fw-semibold fs-5">${item[1]}</div>
+            </div>
+        `).join('');
+
+        const offices = summary.office_summary || [];
+        document.getElementById('adminOfficeFilter').innerHTML = '<option value="">All offices</option>' + offices.map(office => `
+            <option value="${office.id}">${office.name}</option>
+        `).join('');
+        document.getElementById('adminOfficeSummary').innerHTML = offices.length ? offices.map(office => `
+            <div class="col-md-6">
+                <div class="metric-item h-100">
+                    <div class="fw-semibold">${escapeHtml(office.name)}</div>
+                    <div class="small text-muted mb-2">${escapeHtml(office.location)}</div>
+                    <div class="small">Outgoing: <strong>${office.outgoing_transfers}</strong></div>
+                    <div class="small">Incoming: <strong>${office.incoming_transfers}</strong></div>
+                </div>
+            </div>
+        `).join('') : '<div class="empty-state">No offices available yet.</div>';
+    }
+
+    function buildAdminAction(transfer) {
+        if (transfer.status === 'APPROVED' && String(window.inventoryState.activeEmployee.id) === String(transfer.receiver)) {
+            return `<button class="gradient-btn success btn btn-sm" onclick="confirmItem(${transfer.id}, event)">Confirm Received</button>`;
+        }
+        if (transfer.status === 'RECEIVED' && String(window.inventoryState.activeEmployee.id) === String(transfer.receiver)) {
+            return `<button class="gradient-btn primary btn btn-sm" onclick="requestReturn(${transfer.id}, event)">Return Item</button>`;
+        }
+        if (transfer.status === 'AWAITING_APPROVAL') {
+            return `
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="gradient-btn primary btn btn-sm" onclick="approveTransfer(${transfer.id}, event)">Approve</button>
+                    <button class="gradient-btn danger btn btn-sm" onclick="rejectTransfer(${transfer.id}, event)">Reject</button>
+                </div>
+            `;
+        }
+        if (transfer.status === 'RETURN_REQUESTED') {
+            return `<button class="gradient-btn dark btn btn-sm" onclick="approveReturn(${transfer.id}, event)">Confirm Return</button>`;
+        }
+        if (['RETURNED', 'CANCELLED', 'REJECTED'].includes(transfer.status)) {
+            return '<span class="text-success small fw-semibold">Closed</span>';
+        }
+        return '<span class="text-muted small">Monitoring</span>';
+    }
+
+    function getAdminActionName(transfer) {
+        return transfer.return_confirmed_by_name || transfer.rejected_by_name || transfer.approved_by_name || '-';
+    }
+
+    function renderAdminTransfers(data) {
+        const body = document.getElementById('adminTransferTable');
+        if (!data.length) {
+            body.innerHTML = '<tr><td colspan="7" class="empty-state">No admin queue items match the current filters.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = data.map(transfer => `
+            <tr class="clickable-row" onclick="openAdminTransfer(${transfer.id})">
+                <td>
+                    <div class="fw-semibold">${escapeHtml(transfer.item_name)}</div>
+                    <div class="small text-muted">${escapeHtml(transfer.item_code || '-')} • ${escapeHtml(transfer.serial_number || 'No serial')}</div>
+                </td>
+                <td>${escapeHtml(transfer.sender_name || '-')}</td>
+                <td>
+                    <div>${escapeHtml(transfer.receiver_name || '-')}</div>
+                    <div class="small text-muted">
+                        ${transfer.received_date ? `Confirmed on ${formatDateTime(transfer.received_date)}` : 'Receiver confirmation pending'}
+                    </div>
+                </td>
+                <td>
+                    <span class="badge bg-${getStatusMeta(transfer.status, transfer.is_overdue).tone}">${escapeHtml(getStatusMeta(transfer.status, transfer.is_overdue).label)}</span>
+                    <div class="small text-muted mt-1">${escapeHtml(transfer.admin_comment || transfer.rejection_reason || '')}</div>
+                </td>
+                <td>${escapeHtml(getAdminActionName(transfer))}</td>
+                <td>${formatDateOnly(transfer.expected_date)}</td>
+                <td onclick="event.stopPropagation()">${buildAdminAction(transfer)}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadAdminSummary() {
+        const response = await fetch('/api/transfers/summary/');
+        const data = await response.json();
+        renderAdminSummary(data);
+    }
+
+    async function loadAdminDashboard() {
+        const params = new URLSearchParams();
+        if (adminStatusFilter) params.set('status', adminStatusFilter);
+        if (document.getElementById('adminOfficeFilter').value) params.set('office', document.getElementById('adminOfficeFilter').value);
+        if (document.getElementById('adminSearchInput').value.trim()) params.set('search', document.getElementById('adminSearchInput').value.trim());
+        if (adminOverdueOnly) params.set('overdue', '1');
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`/api/transfers/list/${query}`);
+        const data = await response.json();
+        adminTransfers = data;
+        renderAdminTransfers(data);
+    }
+
+    function applyAdminStatusFilter(status) {
+        adminStatusFilter = status;
+        document.querySelectorAll('.filter-chip[data-admin-status]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.adminStatus === status);
+        });
+        loadAdminDashboard();
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadAdminSummary();
+        await loadAdminDashboard();
+
+        document.getElementById('adminSearchInput').addEventListener('input', loadAdminDashboard);
+        document.getElementById('adminOfficeFilter').addEventListener('change', loadAdminDashboard);
+        document.getElementById('adminOverdueBtn').addEventListener('click', function () {
+            adminOverdueOnly = !adminOverdueOnly;
+            this.classList.toggle('active', adminOverdueOnly);
+            loadAdminDashboard();
+        });
+    });
+
+    window.afterTransferAction = async () => {
+        await loadAdminSummary();
+        await loadAdminDashboard();
+    };
+</script>
+
+{% endblock %}

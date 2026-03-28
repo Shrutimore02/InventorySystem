@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register | Inventory Tracking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background:
+                radial-gradient(circle at top left, rgba(16, 185, 129, 0.2), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.2), transparent 32%),
+                linear-gradient(135deg, #ecfeff, #eff6ff);
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+        .auth-card {
+            width: min(760px, 100%);
+            max-width: 100%;
+            margin: 0 auto;
+            border: 0;
+            border-radius: 30px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(10px);
+        }
+
+        .gradient-btn {
+            border: 0;
+            color: #fff;
+            border-radius: 999px;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, #059669, #2563eb);
+            box-shadow: 0 16px 32px rgba(5, 150, 105, 0.24);
+        }
+
+        @media (max-width: 575px) {
+            body {
+                padding: 12px;
+            }
+
+            .auth-card {
+                border-radius: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card auth-card p-4 p-md-5">
+        <div class="mb-4">
+            <div class="small text-uppercase text-success fw-semibold mb-2">Employee Registration</div>
+            <h2 class="mb-1">Create Account</h2>
+            <p class="text-muted mb-0">Register first, then login to request transfers or approve them.</p>
+        </div>
+
+        <form id="registerForm">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Full Name</label>
+                    <input id="name" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Username</label>
+                    <input id="username" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Password</label>
+                    <input id="password" type="password" class="form-control" required>
+                    <div class="form-check mt-2">
+                        <input id="togglePasswordVisibility" class="form-check-input" type="checkbox">
+                        <label class="form-check-label small text-muted" for="togglePasswordVisibility">Show password</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Phone</label>
+                    <input id="phone" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Gender</label>
+                    <select id="gender" class="form-select">
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                        <option value="O">Other</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Role / Designation</label>
+                    <input id="job_role" class="form-control" placeholder="Example: Store Keeper, Lab Engineer, Manager" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">System Access</label>
+                    <select id="role" class="form-select">
+                        <option value="EMP">Employee</option>
+                        <option value="ADM">Admin</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Department</label>
+                    <input id="department" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input id="email" type="email" class="form-control">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">Office</label>
+                    <select id="office" class="form-select" required>
+                        <option value="">Select office</option>
+                        {% for office in offices %}
+                        <option value="{{ office.id }}">{{ office.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button class="gradient-btn w-100 mt-4">Register and Login</button>
+        </form>
+
+        <div class="text-center mt-3 small">
+            Already registered? <a href="/login/">Go to login</a>
+        </div>
+    </div>
+
+    <script>
+        function getCSRF() {
+            return document.querySelector('[name=csrfmiddlewaretoken]').value;
+        }
+
+        const registerForm = document.getElementById('registerForm');
+        const passwordInput = document.getElementById('password');
+        const togglePasswordVisibility = document.getElementById('togglePasswordVisibility');
+        const getValue = (id) => document.getElementById(id).value;
+
+        togglePasswordVisibility.onchange = () => {
+            passwordInput.type = togglePasswordVisibility.checked ? 'text' : 'password';
+        };
+
+        registerForm.onsubmit = async (event) => {
+            event.preventDefault();
+            const response = await fetch('/api/employees/register/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRF(),
+                },
+                body: JSON.stringify({
+                    name: getValue('name'),
+                    username: getValue('username'),
+                    password: getValue('password'),
+                    phone: getValue('phone'),
+                    gender: getValue('gender'),
+                    role: getValue('role'),
+                    job_role: getValue('job_role'),
+                    department: getValue('department'),
+                    email: getValue('email'),
+                    office: getValue('office'),
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                alert(data.message || 'Registration failed.');
+                return;
+            }
+            window.location = data.redirect_url || '/';
+        };
+    </script>
+</body>
+</html>

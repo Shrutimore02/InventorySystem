@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <div class="small text-uppercase text-secondary mb-2">Audit View</div>
+        <h2 class="mb-1">Transfer History</h2>
+        <p class="text-muted mb-0">Review the complete movement history, audit trail, notes, and evidence images for every item you can access.</p>
+    </div>
+</div>
+
+<div class="card p-4 mb-4">
+    <div class="row g-3">
+        <div class="col-md-6">
+            <input id="historySearch" class="form-control search-input" placeholder="Search by item, code, serial, sender, receiver">
+        </div>
+        <div class="col-md-3">
+            <select id="historyStatus" class="form-select filter-select">
+                <option value="">All statuses</option>
+                <option value="AWAITING_APPROVAL">Pending Approval</option>
+                <option value="APPROVED">Approved</option>
+                <option value="RECEIVED">Received</option>
+                <option value="RETURN_REQUESTED">Return Requested</option>
+                <option value="RETURNED">Returned</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="CANCELLED">Cancelled</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button id="historyOverdueBtn" class="filter-chip w-100 h-100">Only Overdue</button>
+        </div>
+    </div>
+</div>
+
+<div class="card table-card">
+    <div class="table-responsive p-3">
+        <table class="table table-bordered table-hover align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Item</th>
+                    <th>Item Code</th>
+                    <th>Transfer Date</th>
+                    <th>Admin Action By</th>
+                    <th>Expected</th>
+                    <th>Returned</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="historyTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let historyTransfers = [];
+    let historyOverdueOnly = false;
+
+    function openHistoryTransfer(id) {
+        const transfer = historyTransfers.find(item => String(item.id) === String(id));
+        if (transfer) openTransferDetails(transfer);
+    }
+
+    function getHistoryAdminName(transfer) {
+        return transfer.return_confirmed_by_name || transfer.rejected_by_name || transfer.approved_by_name || '-';
+    }
+
+    async function loadHistory() {
+        const params = new URLSearchParams();
+        if (historySearch.value.trim()) params.set('search', historySearch.value.trim());
+        if (historyStatus.value) params.set('status', historyStatus.value);
+        if (historyOverdueOnly) params.set('overdue', '1');
+        const query = params.toString() ? `?${params.toString()}` : '';
+
+        const response = await fetch(`/api/transfers/list/${query}`);
+        const data = await response.json();
+        historyTransfers = data;
+
+        document.getElementById('historyTable').innerHTML = data.length ? data.map(transfer => `
+            <tr class="clickable-row" onclick="openHistoryTransfer(${transfer.id})">
+                <td>
+                    <div class="fw-semibold">${escapeHtml(transfer.item_name)}</div>
+                    <div class="small text-muted">${escapeHtml(transfer.serial_number || 'No serial')}</div>
+                </td>
+                <td>${escapeHtml(transfer.item_code || '-')}</td>
+                <td>${formatDateTime(transfer.transfer_date)}</td>
+                <td>${escapeHtml(getHistoryAdminName(transfer))}</td>
+                <td>${formatDateOnly(transfer.expected_date)}</td>
+                <td>${formatDateTime(transfer.returned_date)}</td>
+                <td>
+                    <span class="badge bg-${getStatusMeta(transfer.status, transfer.is_overdue).tone}">${escapeHtml(getStatusMeta(transfer.status, transfer.is_overdue).label)}</span>
+                </td>
+            </tr>
+        `).join('') : '<tr><td colspan="7" class="empty-state">No transfer history found for the selected filters.</td></tr>';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadHistory();
+        historySearch.addEventListener('input', loadHistory);
+        historyStatus.addEventListener('change', loadHistory);
+        historyOverdueBtn.addEventListener('click', function () {
+            historyOverdueOnly = !historyOverdueOnly;
+            this.classList.toggle('active', historyOverdueOnly);
+            loadHistory();
+        });
+    });
+
+    window.afterTransferAction = loadHistory;
+</script>
+
+{% endblock %}

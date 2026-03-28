@@ -1,0 +1,107 @@
+body {
+    background: #f1f5f9;
+    font-family: 'Inter', sans-serif;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+    width: 240px;
+    height: 100vh;
+    position: fixed;
+    background: linear-gradient(180deg, #0f172a, #020617);
+    padding-top: 20px;
+}
+
+.sidebar h4 {
+    text-align: center;
+    color: #fff;
+    margin-bottom: 30px;
+    font-weight: 600;
+}
+
+.sidebar a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    color: #94a3b8;
+    text-decoration: none;
+    transition: 0.3s;
+    border-left: 3px solid transparent;
+}
+
+.sidebar a:hover {
+    background: #1e293b;
+    color: #fff;
+    border-left: 3px solid #3b82f6;
+}
+
+/* ACTIVE LINK */
+.sidebar a.active {
+    background: #1e293b;
+    color: #fff;
+    border-left: 3px solid #3b82f6;
+}
+
+/* ===== CONTENT ===== */
+.main-content {
+    margin-left: 240px;
+    padding: 30px;
+}
+
+/* ===== CARD ===== */
+.card {
+    border-radius: 16px;
+    border: none;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+}
+
+/* ===== TITLE ===== */
+h3 {
+    font-weight: 600;
+}
+
+/* ===== TABLE ===== */
+.table {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.table thead {
+    background: #0f172a;
+    color: white;
+}
+
+/* ===== BUTTON ===== */
+.btn {
+    border-radius: 8px;
+    padding: 6px 12px;
+}
+
+/* ===== BADGE ===== */
+.badge {
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+
+    .sidebar {
+        width: 70px;
+    }
+
+    .sidebar h4 {
+        display: none;
+    }
+
+    .sidebar a {
+        justify-content: center;
+    }
+
+    .main-content {
+        margin-left: 70px;
+    }
+}

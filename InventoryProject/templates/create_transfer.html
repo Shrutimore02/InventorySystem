@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <div class="small text-uppercase text-secondary mb-2">Transfer Setup</div>
+        <h2 class="mb-1">Create Transfer</h2>
+        <p class="text-muted mb-0">Choose an existing item or create a new one, review who currently has it, and submit the next transfer for admin approval.</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8">
+        <div class="card p-4">
+            <form id="form">
+                <div class="alert alert-info border-0 rounded-4">
+                    Everyone can track item movement, but only the right logged-in employee can request the next action. If an item is already with another employee, choose yourself as the receiver to request a handoff.
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Select Existing Item</label>
+                        <select id="item_list" class="form-select filter-select">
+                            <option value="">Create / use item name below</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Or New Item Name</label>
+                        <input id="item_name" class="form-control search-input">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Category</label>
+                        <select id="category" class="form-select filter-select">
+                            <option value="">Select</option>
+                            <option value="SIM">Simulator</option>
+                            <option value="DEV">Device</option>
+                            <option value="OTH">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Total Quantity</label>
+                        <input id="total_quantity" type="number" min="1" value="1" class="form-control search-input">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Serial Number</label>
+                        <input id="serial" class="form-control search-input">
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label">Description</label>
+                        <textarea id="desc" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label">Current Office</label>
+                        <select id="from" class="form-select filter-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Current Floor / Area</label>
+                        <select id="from_floor" class="form-select filter-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Destination Office</label>
+                        <select id="to" class="form-select filter-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Destination Floor / Area</label>
+                        <select id="to_floor" class="form-select filter-select"></select>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-md-8">
+                        <label class="form-label">Receiver</label>
+                        <input id="receiver_search" class="form-control search-input" placeholder="Search registered employee by name">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Mobile</label>
+                        <input id="mobile" class="form-control search-input" readonly>
+                    </div>
+                </div>
+
+                <div id="suggestions" class="border rounded-4 mb-3 mt-3 p-2"></div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Probable Days</label>
+                        <input id="days" type="number" min="1" class="form-control search-input">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Expected Return Date</label>
+                        <input id="expected" class="form-control search-input" readonly>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label">Upload Images</label>
+                        <input type="file" id="images" multiple class="form-control">
+                        <div id="preview" class="d-flex gap-2 mt-3 flex-wrap"></div>
+                    </div>
+                </div>
+
+                <button class="gradient-btn primary w-100 mt-4">Submit For Approval</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="card p-4 mb-4">
+            <div class="small text-uppercase text-secondary mb-2">Selected Item</div>
+            <div id="itemInsight" class="text-muted">Select an existing item to see item code, stock, current holder, and current location.</div>
+        </div>
+        <div class="metric-grid-card">
+            <div class="small text-uppercase text-secondary mb-2">Quick Notes</div>
+            <div class="small text-muted mb-2">Every item now gets a unique item code and QR/barcode-ready value.</div>
+            <div class="small text-muted mb-2">Stock availability updates automatically as transfers move through the workflow.</div>
+            <div class="small text-muted">For faster approval, add clear item photos and a useful description.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.selectedReceiverId = '';
+    let itemMap = {};
+    let officeMap = {};
+
+    function renderItemInsight(item) {
+        const container = document.getElementById('itemInsight');
+        if (!item) {
+            container.innerHTML = 'Select an existing item to see item code, stock, current holder, and current location.';
+            return;
+        }
+        const currentLocation = item.current_office_name
+            ? [item.current_office_name, item.current_floor].filter(Boolean).join(' - ')
+            : 'Not assigned right now';
+        container.innerHTML = `
+            <div class="fw-semibold mb-2">${escapeHtml(item.name)}</div>
+            <div class="small mb-1"><strong>Item Code:</strong> ${escapeHtml(item.item_code || '-')}</div>
+            <div class="small mb-1"><strong>Category:</strong> ${escapeHtml(item.category)}</div>
+            <div class="small mb-1"><strong>Availability:</strong> ${escapeHtml(item.availability)}</div>
+            <div class="small mb-1"><strong>Stock:</strong> ${item.available_quantity} free / ${item.total_quantity} total</div>
+            <div class="small mb-1"><strong>Current Holder:</strong> ${escapeHtml(item.current_holder_name || 'Store / unassigned')}</div>
+            <div class="small mb-1"><strong>Current Location:</strong> ${escapeHtml(currentLocation)}</div>
+            <div class="small"><strong>QR Value:</strong> ${escapeHtml(item.qr_value || item.item_code || '-')}</div>
+        `;
+    }
+
+    function renderFloorOptions(selectId, officeId, selectedValue = '') {
+        const select = document.getElementById(selectId);
+        const office = officeMap[String(officeId)] || {};
+        const floors = office.floor_choices || [];
+
+        if (!floors.length) {
+            select.innerHTML = '<option value="">No floor selection needed</option>';
+            select.value = '';
+            select.disabled = true;
+            return;
+        }
+
+        select.disabled = false;
+        select.innerHTML = ['<option value="">Select floor / area</option>']
+            .concat(floors.map(floor => `<option value="${escapeHtml(floor)}">${escapeHtml(floor)}</option>`))
+            .join('');
+        select.value = selectedValue || '';
+    }
+
+    async function loadItems() {
+        const response = await fetch('/api/items/');
+        const data = await response.json();
+        itemMap = Object.fromEntries(data.map(item => [String(item.id), item]));
+        item_list.innerHTML += data.map(item => `
+            <option value="${item.id}" data-category="${item.category}">
+                ${item.name} (${item.item_code}) - ${item.available_quantity}/${item.total_quantity} available
+            </option>
+        `).join('');
+    }
+
+    async function loadOffices() {
+        const response = await fetch('/api/offices/');
+        const data = await response.json();
+        officeMap = Object.fromEntries(data.map(office => [String(office.id), office]));
+        const options = data.map(office => `<option value="${office.id}">${office.name}</option>`).join('');
+        from.innerHTML = options;
+        to.innerHTML = options;
+        if (data.length) {
+            from.value = String(window.inventoryState.activeEmployee.office_id || data[0].id);
+            to.value = String(window.inventoryState.activeEmployee.office_id || data[0].id);
+        }
+        renderFloorOptions('from_floor', from.value);
+        renderFloorOptions('to_floor', to.value);
+    }
+
+    item_list.onchange = () => {
+        const selected = item_list.options[item_list.selectedIndex];
+        const item = itemMap[item_list.value];
+        if (!item_list.value) {
+            renderItemInsight(null);
+            return;
+        }
+        item_name.value = item.name;
+        category.value = selected.dataset.category || '';
+        total_quantity.value = item.total_quantity || 1;
+        if (item.current_office_id) {
+            from.value = String(item.current_office_id);
+            renderFloorOptions('from_floor', from.value, item.current_floor || '');
+        }
+        renderItemInsight(item);
+    };
+
+    from.onchange = () => renderFloorOptions('from_floor', from.value);
+    to.onchange = () => renderFloorOptions('to_floor', to.value);
+
+    receiver_search.oninput = async () => {
+        if (!receiver_search.value.trim()) {
+            suggestions.innerHTML = '';
+            return;
+        }
+
+        const response = await fetch(`/api/employees/?q=${encodeURIComponent(receiver_search.value)}`);
+        const data = await response.json();
+        suggestions.innerHTML = data.map(employee => `
+            <button type="button" class="btn btn-light border w-100 text-start mb-2 rounded-4" onclick="selectUser(${employee.id}, '${employee.phone || ''}', '${employee.name.replace(/'/g, "\\'")}')">
+                <div class="fw-semibold">${employee.name}</div>
+                <div class="small text-muted">${employee.role === 'ADM' ? 'Admin' : 'Employee'} • ${employee.office_name}</div>
+            </button>
+        `).join('');
+    };
+
+    function selectUser(id, phone, name) {
+        window.selectedReceiverId = id;
+        receiver_search.value = name;
+        mobile.value = phone;
+        suggestions.innerHTML = '';
+    }
+
+    days.oninput = () => {
+        const duration = parseInt(days.value, 10);
+        if (!duration) {
+            expected.value = '';
+            return;
+        }
+        const target = new Date();
+        target.setDate(target.getDate() + duration);
+        expected.value = target.toISOString().split('T')[0];
+    };
+
+    images.onchange = () => {
+        preview.innerHTML = '';
+        Array.from(images.files).forEach(file => {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = 'gallery-thumb';
+            preview.appendChild(img);
+        });
+    };
+
+    form.onsubmit = async (event) => {
+        event.preventDefault();
+
+        const fd = new FormData();
+        fd.append('item_id', item_list.value);
+        fd.append('item_name', item_name.value);
+        fd.append('category', category.value);
+        fd.append('total_quantity', total_quantity.value);
+        fd.append('serial_number', serial.value);
+        fd.append('description', desc.value);
+        fd.append('from_office', from.value);
+        fd.append('from_floor', from_floor.value);
+        fd.append('to_office', to.value);
+        fd.append('to_floor', to_floor.value);
+        fd.append('receiver_id', window.selectedReceiverId);
+        fd.append('receiver_name', receiver_search.value);
+        fd.append('receiver_phone', mobile.value);
+        fd.append('probable_days', days.value);
+        fd.append('expected_date', expected.value);
+
+        for (const file of images.files) {
+            fd.append('images', file);
+        }
+
+        const response = await fetch('/api/transfers/create/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCSRF() },
+            body: fd,
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            showToast(data.message || 'Transfer submission failed.');
+            return;
+        }
+
+        showToast(data.message);
+        await loadNotifications();
+        window.location = '/';
+    };
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadItems();
+        await loadOffices();
+        const activeOffice = Object.values(officeMap).find(
+            office => office.name === window.inventoryState.activeEmployee.office_name
+        );
+        if (activeOffice) {
+            from.value = String(activeOffice.id);
+            to.value = String(activeOffice.id);
+            renderFloorOptions('from_floor', from.value);
+            renderFloorOptions('to_floor', to.value);
+        }
+    });
+</script>
+
+{% endblock %}
